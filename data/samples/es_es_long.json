@@ -1,0 +1,8 @@
+{
+  "source": "C:\\Proyectos\\Audio2Text-AI\\data\\samples\\es_es_sample.wav",
+  "gap_seconds": 1.0,
+  "duration_s": 36.6,
+  "sample_rate_hz": 16000,
+  "reference": "Milenios atrás, un hombre llamado Aristarco comentó que el Sistema Solar giraba en torno al Sol. Milenios atrás, un hombre llamado Aristarco comentó que el Sistema Solar giraba en torno al Sol. Milenios atrás, un hombre llamado Aristarco comentó que el Sistema Solar giraba en torno al Sol. Milenios atrás, un hombre llamado Aristarco comentó que el Sistema Solar giraba en torno al Sol.",
+  "note": "Audio sintético para validar chunking; no es una grabación continua."
+}

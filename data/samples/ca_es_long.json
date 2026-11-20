@@ -1,0 +1,8 @@
+{
+  "source": "C:\\Proyectos\\Audio2Text-AI\\data\\samples\\ca_es_sample.wav",
+  "gap_seconds": 1.0,
+  "duration_s": 42.4,
+  "sample_rate_hz": 16000,
+  "reference": "Avui en dia, la cuina javanesa és fàcil de trobar per tot arreu de l'arxipèlag i ofereix una gran varietat de plats condimentats de forma senzilla. Els sabors preferits dels javanesos solen ser els dels cacauets, els bitxos, el sucre (sobretot el sucre de coco javanès) i diverses espècies aromàtiques. Avui en dia, la cuina javanesa és fàcil de trobar per tot arreu de l'arxipèlag i ofereix una gran varietat de plats condimentats de forma senzilla. Els sabors preferits dels javanesos solen ser els dels cacauets, els bitxos, el sucre (sobretot el sucre de coco javanès) i diverses espècies aromàtiques.",
+  "note": "Audio sintetico para validar chunking; no es una grabacion continua."
+}

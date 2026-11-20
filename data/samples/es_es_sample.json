@@ -1,0 +1,14 @@
+{
+  "dataset": "google/fleurs",
+  "config": "es_419",
+  "split": "dev",
+  "source_audio": "https://huggingface.co/datasets/google/fleurs/resolve/main/data/es_419/audio/dev.tar.gz",
+  "source_transcripts": "https://huggingface.co/datasets/google/fleurs/resolve/main/data/es_419/dev.tsv",
+  "archive_member": "10027710469591428283.wav",
+  "transcript": "Milenios atrás, un hombre llamado Aristarco comentó que el Sistema Solar giraba en torno al Sol.",
+  "language": "es",
+  "sample_rate_hz": 16000,
+  "duration_s": 8.4,
+  "license": "CC-BY-4.0 (FLEURS)",
+  "note": "Audio español para validar Whisper Small con language='es'."
+}

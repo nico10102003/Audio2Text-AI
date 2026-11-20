@@ -1,0 +1,12 @@
+{
+  "dataset": "google/fleurs",
+  "config": "ca_es",
+  "split": "dev",
+  "source_audio": "https://huggingface.co/datasets/google/fleurs/resolve/main/data/ca_es/audio/dev.tar.gz",
+  "source_transcripts": "https://huggingface.co/datasets/google/fleurs/resolve/main/data/ca_es/dev.tsv",
+  "archive_member": "10082569210749035829.wav",
+  "transcript": "Avui en dia, la cuina javanesa és fàcil de trobar per tot arreu de l'arxipèlag i ofereix una gran varietat de plats condimentats de forma senzilla. Els sabors preferits dels javanesos solen ser els dels cacauets, els bitxos, el sucre (sobretot el sucre de coco javanès) i diverses espècies aromàtiques.",
+  "language": "ca",
+  "sample_rate_hz": 16000,
+  "license": "CC-BY-4.0 (FLEURS)"
+}
