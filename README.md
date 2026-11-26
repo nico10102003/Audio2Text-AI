@@ -1,205 +1,227 @@
-# Audio2Text AI — Etapas 1–5: inferencia, audio largo, interfaz Streamlit y entrada de audio
+# Audio2Text AI
 
-Proyecto académico **Audio2Text AI**: ejecutar el modelo oficial
-[`naver/multilingual-distilwhisper-28k`](https://huggingface.co/naver/multilingual-distilwhisper-28k)
-en local (RTX 2050, 4 GB), verificar una transcripción mínima en catalán, soportar
-audios de más de 30 segundos mediante fragmentación con timestamps por segmento
-y ofrecer una interfaz web local con Streamlit con dos formas de proporcionar
-audio: subir un archivo o grabarlo directamente desde el micrófono. También se
-incorporó [`openai/whisper-small`](https://huggingface.co/openai/whisper-small)
-como modelo alternativo para transcribir en español.
+**Reconocimiento automático de voz con Transformers encoder-decoder (DistilWhisper y Whisper)**
 
-El proyecto **no entrena ni modifica pesos**. Usa el código y los pesos oficiales, con
-pequeños *shims* de compatibilidad en tiempo de ejecución para que el repositorio
-(escrito para `transformers 4.30.1`) funcione con `transformers 4.57.3` y Python 3.13.
-La interfaz reutiliza el mismo motor de inferencia; no reimplementa el modelo.
+Proyecto final · Procesamiento de Datos Secuenciales
 
-## Resultado
+**Integrantes:** `[Nombre 1]`, `[Nombre 2]`, `[Nombre 3]`, `[Nombre 4]`
 
-| Dispositivo | Precisión | Búsqueda | Latencia | VRAM pico | CER | WER |
-|---|---|---|---|---|---|---|
-| CUDA (RTX 2050) | fp32 | beam 5 | 9.66 s | 2592 MiB | 2.86 % | 9.80 % |
-| CUDA (RTX 2050) | fp16 | beam 5 | 7.72 s | 1315 MiB | 2.86 % | 9.80 % |
-| CPU | fp32 | beam 5 | 28.78 s | — | 2.86 % | 9.80 % |
-| CUDA (RTX 2050) | fp32 | greedy | 6.92 s | 1603 MiB | 2.86 % | 9.80 % |
+---
 
-Audio: `data/samples/ca_es_sample.wav` (FLEURS `ca_es`, 20.70 s, 16 kHz mono).
-Las cuatro ejecuciones producen **exactamente los mismos 109 tokens** que la
-verificación de referencia con `transformers 4.30.1` (`logs/legacy_transformers430_results.json`).
+## Tabla de contenido
 
-Transcripción:
+1. [Resumen (Abstract)](#1-resumen-abstract)
+2. [Introducción](#2-introducción)
+3. [Marco teórico](#3-marco-teórico)
+4. [Metodología](#4-metodología)
+5. [Desarrollo e implementación](#5-desarrollo-e-implementación)
+6. [Resultados y análisis](#6-resultados-y-análisis)
+7. [Conclusiones](#7-conclusiones)
+8. [Referencias](#8-referencias)
 
-> Avui en dia, la cuina japanesa és fàcil de trobar per tot arreu de l'arxipèleg i ofereix una gran varietat de plats condimentats de forma senzilla.Els sabors preferits als japanesos solen ser els dels cacauets, els bitxos, el sucre, sobretot el sucre, coco javanès i diverses espècies aromàtiques.
+---
 
-La diferencia con la referencia de FLEURS es principalmente ortográfica
-(`japanesa`/`javanesa`, `arxipèleg`/`arxipèlag`, `japanesos`/`javanesos`)
-y de puntuación, no de contenido.
+## 1. Resumen (Abstract)
 
-## Interfaz Streamlit
+Audio2Text AI es una aplicación local de reconocimiento automático del habla (ASR) basada en una arquitectura **Transformer encoder-decoder**. Se utiliza el modelo preentrenado `naver/multilingual-distilwhisper-28k` (DistilWhisper), que extiende a Whisper-small con expertos específicos por idioma entrenados mediante destilación de conocimiento, y como modelo alternativo para español `openai/whisper-small`.
 
-`streamlit_app.py` es la capa de presentación. Toda la lógica de modelo sigue en
-`src/audio2text/engine.py` y `src/audio2text/chunking.py`; `ui_service.py` solo valida
-subidas, forma resultados y prepara descargas.
+El trabajo **no entrena ni modifica pesos**: implementa el proceso de **inferencia** con el código y los pesos oficiales, añade el manejo de audios de más de 30 segundos mediante fragmentación con timestamps por segmento, y ofrece una **interfaz web interactiva con Streamlit** que permite subir un archivo o grabar desde el micrófono y observar la transcripción, las métricas y los segmentos.
 
-Funcionalidades implementadas:
+Con un audio de 20,70 s en catalán (FLEURS) en una GPU RTX 2050 de 4 GB, el sistema obtuvo un **CER de 2,86 %** y un **WER de 9,80 %**, con una latencia de **7,72 s** y **1315 MiB** de VRAM en FP16. Las cuatro configuraciones evaluadas producen exactamente los mismos 109 tokens que la verificación de referencia con `transformers 4.30.1`, lo que valida la implementación.
 
-- Carga de archivos **WAV, FLAC, MP3, M4A, AAC, MP4 y MOV** (MP3/M4A/AAC/MP4/MOV se
-  decodifican con FFmpeg) con validación de extensión, tamaño, contenido vacío y decodificación.
-- Dos formas de proporcionar audio: **subir un archivo** (WAV, FLAC, MP3, M4A, AAC,
-  MP4 y MOV; MP3/M4A/AAC/MP4/MOV se decodifican con FFmpeg) o **grabar audio** con
-  `st.audio_input` desde el micrófono del equipo. Ambos llevan al mismo proceso de
-  transcripción.
-- Nombre, formato, duración, frecuencia de muestreo y reproductor de audio.
-- **Modelo** (**NAVER Multilingual DistilWhisper 28k** / **OpenAI Whisper Small**).
-- Idioma (**catalán, tamil, tailandés** para NAVER; **español** para Whisper Small),
-  dispositivo (**CUDA/CPU**), precisión (**FP16/FP32** según compatibilidad) y beam
-  search configurable (5 por defecto). Al seleccionar Whisper Small, el idioma se
-  configura automáticamente en «Español».
-- Indicadores visibles de dispositivo, GPU/VRAM y configuración usada.
-- Progreso por fases: carga del modelo e inferencia. No se simula progreso por chunk.
-- Texto completo con botón de copia, duración, latencia, segmentos con inicio/fin y
-  descargas **TXT/JSON**.
-- Historial de la sesión (máximo 20), selección de resultados anteriores y opción de
-  limpiarlo.
-- Modelo en caché con `st.cache_resource(max_entries=1)`, clave
-  `(ruta, idioma, dispositivo, precisión)`, y liberación explícita de VRAM al cambiar
-  de configuración o pulsar «Liberar modelo de memoria».
-- Tema nativo en `.streamlit/config.toml`, sin CSS dependiente de clases internas.
+---
 
-La inferencia real se verificó a través del `file_uploader` y del botón de Streamlit
-con `AppTest`:
+## 2. Introducción
 
-| Flujo UI | Audio | Resultado | Latencia | Segmentos |
+### Artículo base y repositorio original
+
+| Elemento | Referencia |
+|---|---|
+| Artículo | T. Palmeira Ferraz, M. Zanon Boito, C. Brun y V. Nikoulina, *DistilWhisper: Efficient Distillation of Multi-Task Speech Models via Language-Specific Experts*, ICASSP 2024. [arXiv:2311.01070](https://arxiv.org/abs/2311.01070) |
+| Repositorio original | [naver/multilingual-distilwhisper](https://github.com/naver/multilingual-distilwhisper) (incluido sin modificar en `vendor/multilingual-distilwhisper/`) |
+| Pesos | [naver/multilingual-distilwhisper-28k](https://huggingface.co/naver/multilingual-distilwhisper-28k) |
+| Modelo alternativo | [openai/whisper-small](https://huggingface.co/openai/whisper-small) |
+
+### Contexto y motivación
+
+El reconocimiento del habla convierte una secuencia de audio en una secuencia de texto. Whisper (OpenAI) demostró que un solo Transformer entrenado con supervisión débil a gran escala puede transcribir decenas de idiomas, pero los modelos pequeños rinden peor que los grandes en idiomas con pocos datos, y los modelos grandes son costosos de ejecutar. DistilWhisper aborda este problema: mejora a Whisper-small en idiomas de pocos recursos sin el costo de Whisper-large.
+
+### Objetivo
+
+Aplicar una arquitectura Transformer encoder-decoder ya desarrollada a un problema de datos secuenciales (voz a texto), **comprender su funcionamiento a fondo** (entradas, salidas, atención, tensores Q/K/V, innovaciones) y demostrar la **inferencia funcional** con una interfaz interactiva.
+
+---
+
+## 3. Marco teórico
+
+### 3.1 Arquitectura general
+
+Ambos modelos son Transformers **encoder-decoder** (secuencia a secuencia). El encoder convierte el audio en una representación contextual; el decoder genera el texto token por token consultando esa representación mediante atención cruzada.
+
+```mermaid
+flowchart LR
+    A["Audio 16 kHz, 30 s"] --> B["Log-Mel 80 x 3000"]
+    B --> C["2 Conv1D + GELU: 1500 x 768"]
+    C --> D["Encoder: 12 bloques"]
+    D -->|"K y V"| E["Decoder: 12 bloques"]
+    T["Tokens: prefijo + generados"] --> E
+    E --> F["Proyección a 51865 + softmax"]
+    F --> G["Beam search"]
+    G --> H["Texto"]
+```
+
+| Parámetro (Whisper-small) | Valor |
+|---|---|
+| Capas encoder / decoder | 12 / 12 |
+| Dimensión del modelo (d_model) | 768 |
+| Cabezas de atención | 12 (64 dimensiones por cabeza) |
+| FFN interna | 3072, activación GELU |
+| Vocabulario | 51 865 tokens |
+| Posiciones máximas del decoder | 448 |
+| Parámetros | ≈ 244 M |
+
+### 3.2 Entrada del modelo
+
+1. Remuestreo a 16 kHz y ajuste a **30 s** (480 000 muestras).
+2. **Espectrograma log-Mel** de 80 bandas (ventanas de 25 ms, salto de 10 ms): tensor de **80 × 3000**.
+3. Dos convoluciones 1D con GELU; la segunda con stride 2: tensor de **1500 × 768** (una posición cada ≈ 20 ms).
+4. Suma de embeddings posicionales sinusoidales.
+
+### 3.3 Mecanismo de atención
+
+La atención calcula, para cada posición, un promedio ponderado de la información de todas las demás:
+
+```
+Atención(Q, K, V) = softmax( Q · Kᵀ / √d_k ) · V
+```
+
+- **Q · Kᵀ** mide la similitud entre cada consulta y cada clave.
+- **√d_k** (d_k = 64) evita que los productos punto crezcan y saturen el softmax.
+- **softmax** convierte los puntajes en probabilidades (pesos de atención).
+- Multiplicar por **V** mezcla la información según esos pesos.
+
+Se usa **atención multi-cabeza**: 12 atenciones en paralelo de 64 dimensiones, cuyas salidas se concatenan (12 × 64 = 768) y se proyectan con una matriz W_O de 768 × 768.
+
+### 3.4 Creación y función de los tensores Q, K y V
+
+Q, K y V se obtienen multiplicando la entrada X por tres matrices de pesos aprendidas (`q_proj`, `k_proj`, `v_proj`):
+
+| Tensor | Cálculo | Función |
+|---|---|---|
+| **Q** (query) | X · W_Q | Qué información busca cada posición |
+| **K** (key) | X · W_K | Qué ofrece cada posición para ser encontrada |
+| **V** (value) | X · W_V | La información que se transmite |
+
+Existen tres tipos de atención según el origen de Q, K y V:
+
+| Tipo | Ubicación | Q | K y V | Matriz de atención (por cabeza) |
 |---|---|---|---|---|
-| Corto | `ca_es_sample.wav` (20.70 s) | mismo texto y 109 tokens que la etapa 1 | 6.35–8.18 s (con modelo en caché) | 1 (0.00–20.70 s) |
-| Largo | `ca_es_long.wav` (42.40 s) | mismo texto que la etapa 2 | 15.33–18.57 s | 2 (0.00–21.01 s, 21.01–42.40 s) |
+| Auto-atención | Encoder | audio | audio | 1500 × 1500 |
+| Auto-atención enmascarada | Decoder | tokens | tokens | T × T (triangular, causal) |
+| Atención cruzada | Decoder | tokens | salida del encoder | T × 1500 |
 
-Evidencia: `logs/streamlit_ui_inference.json` y
-`logs/streamlit_ui_inference_long.json`. Ambos usan CUDA FP16, beam 5 y conservan el
-prefijo `[50258, 50270, 50359, 50363]`.
+En la **atención cruzada** el decoder pregunta qué parte del audio es relevante para la palabra que está escribiendo; es el puente entre audio y texto.
 
-## Modelos: NAVER Multilingual DistilWhisper 28k y OpenAI Whisper Small
+### 3.5 Bloques del encoder y del decoder
 
-La barra lateral de Streamlit tiene un selector de modelo. La diferenciación:
+- **Bloque del encoder:** auto-atención → FFN (con LayerNorm previa y conexiones residuales). Forma constante: 1500 × 768.
+- **Bloque del decoder:** auto-atención enmascarada → atención cruzada → FFN.
 
-| Modelo | Rol | Idiomas | Pesos | Notas |
-|---|---|---|---|---|
-| **NAVER Multilingual DistilWhisper 28k** (predeterminado) | Modelo académico principal | catalán, tamil, tailandés | `models/multilingual-distilwhisper-28k/` (local) | Clase custom del repo NAVER + experto por idioma (`expert.<lang>.bin`); prefijo forzado validado `[50258, 50270, 50359, 50363]`. |
-| **OpenAI Whisper Small** | Alternativo para español | español (`es`) | `openai/whisper-small` (Hugging Face) | Usa `WhisperForConditionalGeneration` + `WhisperProcessor`; se carga con `language="es"`. |
+### 3.6 Generación de la salida
 
-- **NAVER 28k** sigue siendo el modelo académico predeterminado y sus resultados
-  token a token no cambian. El checkpoint no incluye experto de español, por lo que
-  el idioma debe ser uno de los tres (catalán/tamil/tailandés).
-- **Whisper Small** transcribe en español vía `language="es"`. Al seleccionarlo en
-  la UI, el idioma se setea a «Español»; al volver a NAVER, el idioma vuelve a uno
-  de sus tres idiomas disponibles. La lista de idiomas del modelo NAVER no se
-  modifica.
-- **Chunking compartido:** `transcribe_auto` mantiene la ruta corta validada y
-  fragmenta audios > 30 s para ambos modelos.
-- **Memoria:** cada modelo se mantiene en su entrada de
-  `st.cache_resource(max_entries=1)`; al cambiar de modelo se libera la entrada
-  anterior para no acumular checkpoints en 4 GB.
+La generación es **autoregresiva**:
 
-Verificación real (CUDA fp16, RTX 2050, beam 5):
+1. El decoder arranca con el prefijo `[50258, 50270, 50359, 50363]`: `<|startoftranscript|>`, `<|ca|>`, `<|transcribe|>`, `<|notimestamps|>`.
+2. En cada paso produce una distribución de probabilidad sobre 51 865 tokens.
+3. **Beam search** (5 por defecto) mantiene varias hipótesis en paralelo y elige la secuencia más probable.
+4. Se repite hasta `<|endoftext|>` y los tokens se convierten a texto.
 
-| Audio | Modelo | Latencia | VRAM pico |
-|---|---|---|---|
-| `es_es_sample.wav` (8.40 s, FLEURS es_419) | Whisper Small | 2.54 s | 786 MiB |
-| `es_es_long.wav` (36.60 s) | Whisper Small | 15.84 s (2 segmentos) | — |
+### 3.7 Innovaciones
 
-Texto corto (Whisper Small, español):
+**Whisper:** supervisión débil con ≈ 680 000 horas de audio; un único modelo multitarea y multilingüe controlado por tokens especiales; robustez frente a ruido y acentos.
 
-> Milenios atrés, un hombre llamado Aristarco comentó que el sistema solar giraba en torno al sol.
+**DistilWhisper:** añade, para cada idioma, un **módulo experto** (subred feed-forward) cuya contribución se controla con una **compuerta aprendida** (enrutamiento condicional específico por idioma), y entrena esos expertos mediante **destilación de conocimiento** desde Whisper-large-v2. Es **modular**: agregar un idioma no exige reentrenar el modelo completo. Por eso el checkpoint se compone de `model.safetensors` (base) más `expert.<idioma>.bin`.
 
-## Audio largo (chunking)
+> Los detalles exactos de la compuerta y del entrenamiento se encuentran en el artículo [1].
 
-Whisper solo procesa 30 s por pasada. `transcribe_auto` mantiene la ruta corta
-validada y, por encima de 30 s, fragmenta el audio:
+### 3.8 Limitaciones del modelo
 
-1. Busca pausas reales (RMS < `--silence-rms` durante ≥ `--min-silence-seconds`,
-   0.4 s por defecto) y corta en el centro de la última pausa anterior a los 30 s.
-   Así el fragmento termina en silencio y el siguiente empieza ahí: no hay
-   solapamiento ni texto duplicado.
-2. Si no hay pausas, usa ventanas de 30 s con 2 s de solapamiento. El texto repetido
-   al inicio del fragmento siguiente se elimina comparando palabras normalizadas
-   (mínimo 2, máximo 12).
-3. Cada fragmento conserva el prefijo explícito
-   `[50258, 50270, 50359, 50363]` y los mismos parámetros de generación.
-4. Los segmentos se liberan de memoria uno a uno (`gc.collect()` +
-   `torch.cuda.empty_cache()`).
+- Ventana fija de 30 s.
+- Costo cuadrático de la atención con la longitud de la secuencia.
+- Decodificación autoregresiva lenta, no apta para streaming.
+- Posibles alucinaciones y repeticiones con silencio o ruido.
+- Sesgo hacia el inglés en los datos de entrenamiento.
+- El checkpoint solo incluye expertos para **catalán, tamil y tailandés** (no español).
 
-Resultados con un audio sintético de 42.40 s (el clip FLEURS repetido dos veces con
-1 s de silencio, `data/samples/ca_es_long.wav`):
+---
 
-| Configuración | Segmentos | Latencia | VRAM pico | CER | WER |
-|---|---|---|---|---|---|
-| CUDA fp16, beam 5, silencio 0.4 s | 2 (0.00–21.01 s, 21.01–42.40 s) | 16.26 s | 1315 MiB | 4.49 % | 12.75 % |
+## 4. Metodología
 
-El texto contiene las dos repeticiones sin pérdida ni duplicación **en la unión** (el
-corte cae en la pausa). La segunda repetición omite `arreu de l'` por variación del
-modelo, no por el chunking. Los timestamps son **estimaciones por segmento** (límites de
-ventana).
+| Aspecto | Descripción |
+|---|---|
+| Tipo de trabajo | Inferencia con modelos preentrenados; **sin entrenamiento ni modificación de pesos** |
+| Modelo principal | NAVER Multilingual DistilWhisper 28k (catalán, tamil, tailandés) |
+| Modelo alternativo | OpenAI Whisper Small (español) |
+| Lenguaje y librerías | Python 3.13, PyTorch 2.10, `transformers 4.57.3`, Streamlit 1.67.0, `soundfile`, FFmpeg |
+| Hardware de prueba | Windows 11, GPU NVIDIA RTX 2050 (4 GB) |
+| Datos de prueba | Clips de FLEURS (`ca_es` y `es_419`) en `data/samples/` |
+| Métricas | CER, WER, latencia, VRAM pico y comparación token a token con la referencia |
 
-La inferencia corta se revalidó tras el cambio: mismo texto y **mismos 109 tokens**
-que la etapa 1 (`logs/inference_stage2_short_fp16.json`).
+**Proceso seguido:**
 
-## Entrada de audio: subida y grabación
+1. Ejecutar el modelo oficial en local con una transcripción mínima en catalán.
+2. Verificar que la salida coincide token a token con la referencia de `transformers 4.30.1`.
+3. Soportar audios de más de 30 s con fragmentación y timestamps por segmento.
+4. Construir la interfaz Streamlit sobre el mismo motor de inferencia.
+5. Incorporar la entrada por micrófono y Whisper Small para español.
 
-La sección «1. Audio» de la interfaz ofrece dos formas de proporcionar audio a
-la transcripción:
+**Uso de pesos preentrenados:** el código original está escrito para `transformers 4.30.1`, que no tiene wheels para Python 3.13. Se aplican **parches de compatibilidad en tiempo de ejecución** (`src/audio2text/compat.py`) sin modificar `vendor/`.
 
-1. **Subir un archivo**: elige un archivo desde el equipo. Formatos admitidos:
-   WAV, FLAC, MP3, M4A, AAC, MP4 y MOV (los MP3/M4A/AAC/MP4/MOV se decodifican
-   con FFmpeg). Validad: tamaño (≤ 200 MB), extensión, contenido vacío y
-   decodificación.
-2. **Grabar audio**: en la pestaña «Grabar audio», `st.audio_input` ofrece los
-   controles de grabación que el navegador permita (inicio/fin de la grabación);
-   al terminar, un reproductor permite escuchar el audio.
+---
 
-Ambas opciones producen el mismo audio procesado y llevan al mismo flujo de
-transcripción (`transcribe`/`transcribe_auto` según la duración). La grabación
-se convierte a WAV compatible con el motor, usando un archivo temporal que se
-elimina tras decodificarlo, y el motor decodifica/procesa el audio en memoria.
+## 5. Desarrollo e implementación
 
-### Requisitos
+### 5.1 Requisitos
 
 - Windows 11 (probado) o Linux.
-- Python 3.13 (probado con 3.13.15).
-- GPU NVIDIA con ≥ 2.6 GB libres para fp32, o ≥ 1.4 GB para fp16. También funciona en CPU.
+- Python 3.13.
 - `uv` (recomendado) o `pip`.
-- Streamlit 1.67.0 (incluido en `requirements.txt`).
-- Los pesos del modelo NAVER en `models/multilingual-distilwhisper-28k/`.
-- Whisper Small: pesos de `openai/whisper-small` (en caché de HF, o descargados bajo demanda).
-- Navegador web moderno para la interfaz local.
-- GNU Make (opcional, solo para los atajos; comprobado con 4.4.1 en este equipo).
+- GPU NVIDIA con ≥ 1,4 GB libres para FP16 (≥ 2,6 GB para FP32). También funciona en CPU.
+- FFmpeg en el PATH (solo para MP3, M4A, AAC, MP4 y MOV; no se necesita para WAV ni FLAC).
 
-## Instalación
+### 5.2 Instalación
 
 ```powershell
+git clone https://github.com/nico10102003/Audio2Text-AI.git
+cd Audio2Text-AI
+
 uv venv .venv --python 3.13
+
+# Con GPU NVIDIA:
 uv pip install --python .venv\Scripts\python.exe torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
+# Solo CPU: usar --index-url https://download.pytorch.org/whl/cpu
+
 uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 ```
 
-En CPU, sustituir el primer `uv pip install` por la build CPU de PyTorch.
-`requirements.txt` instala también `streamlit==1.67.0` y sus dependencias.
+En Linux o macOS, reemplazar `.venv\Scripts\python.exe` por `.venv/bin/python`.
 
-### Pesos
+### 5.3 Descarga de los pesos
 
-El checkpoint local contiene:
+Los pesos no están en el repositorio. Se descargan con:
+
+```powershell
+.\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_download as d; [d('naver/multilingual-distilwhisper-28k', f, local_dir='models/multilingual-distilwhisper-28k') for f in ['config.json','generation_config.json','model.safetensors','expert.catalan.bin']]"
+```
+
+Estructura resultante:
 
 ```
 models/multilingual-distilwhisper-28k/
 ├── config.json
 ├── generation_config.json
-├── model.safetensors          # 966,997,096 bytes
-└── expert.catalan.bin         # 458,178,391 bytes
-```
-
-Para descargarlos de nuevo:
-
-```powershell
-.\.venv\Scripts\python.exe -c "from huggingface_hub import hf_hub_download as d; [d('naver/multilingual-distilwhisper-28k', f, local_dir='models/multilingual-distilwhisper-28k') for f in ['config.json','generation_config.json','model.safetensors','expert.catalan.bin']]"
+├── model.safetensors      # 966 997 096 bytes
+└── expert.catalan.bin     # 458 178 391 bytes
 ```
 
 Verificación de integridad (SHA-256):
@@ -209,91 +231,55 @@ BD07406AB1DD8061E7187A50C11E04CE1650C1EA4A2C4D6CF1EBD6B31C20C5E1  model.safetens
 DC7192D0B60A9960169CBC5C2F283B028B857D20307E822B4E30E293E4E88FE8  expert.catalan.bin
 ```
 
-### Audio de prueba
+Whisper Small se descarga automáticamente desde Hugging Face la primera vez que se usa.
 
-```powershell
-.\.venv\Scripts\python.exe scripts\prepare_sample.py
-```
-
-Descarga solo el primer WAV de FLEURS `ca_es` mediante petición HTTP por rangos
-(sin bajar el archivo completo de 573 MB) y escribe la transcripción de referencia.
-
-Para las pruebas de audio largo:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\make_long_sample.py
-```
-
-Genera `data/samples/ca_es_long.wav` (42.40 s: clip x2 + 1 s de silencio) y su
-referencia. Es un audio sintético para validar el chunking, no una grabación continua.
-
-Audio en español para Whisper Small (muestras del FLEURS es_419, disponibles en el
-repo): `data/samples/es_es_sample.wav` (8.40 s) y `data/samples/es_es_long.wav`
-(36.60 s).
-
-## Uso
-
-### Interfaz web local
+### 5.4 Ejecución
 
 ```powershell
 .\.venv\Scripts\streamlit.exe run streamlit_app.py
 ```
 
-También se puede lanzar con:
+La aplicación abre en `http://localhost:8501`. En Windows también basta con hacer doble clic en `run.bat`. Con GNU Make: `make run`.
 
-```powershell
-.\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
-```
+### 5.5 Cómo se cargan los pesos
 
-La app abre en `http://localhost:8501`. El límite de subida es 200 MB (configurado en
-`.streamlit/config.toml`). La primera transcripción carga el modelo; las siguientes
-interacciones con la misma configuración lo reutilizan. Si se cambia de idioma,
-dispositivo o precisión, se libera la entrada anterior y se carga la nueva.
+1. `engine.py` lee `config.json` y `generation_config.json` de `models/multilingual-distilwhisper-28k/`.
+2. Se instancia la clase del modelo del repositorio oficial (`vendor/multilingual-distilwhisper/`) y se cargan los pesos base desde `model.safetensors`.
+3. Se carga el experto del idioma elegido (`expert.<idioma>.bin`).
+4. El modelo se mueve a CUDA o CPU, en FP16 o FP32.
+5. En Streamlit, el modelo queda en caché (`st.cache_resource`) con clave `(ruta, idioma, dispositivo, precisión)`, y se libera la VRAM al cambiar de configuración.
 
-**Dos opciones de entrada de audio** (pestañas de la sección «1. Audio»):
+Para Whisper Small se usan `WhisperForConditionalGeneration` y `WhisperProcessor`.
 
-1. **Subir un archivo**: elige un archivo desde el equipo. Formatos admitidos:
-   WAV, FLAC, MP3, M4A, AAC, MP4 y MOV.
-2. **Grabar audio**: en la pestaña «Grabar audio», el reproductor de `st.audio_input`
-   ofrece los controles de grabación que permita el navegador; después de terminar
-   la grabación aparece un reproductor para escucharla.
+### 5.6 Preprocesamiento
 
-Ambas opciones llevan al mismo proceso de transcripción: el audio se procesa
-localmente con el modelo seleccionado (idioma, dispositivo, precisión y beam
-search configurables) y se muestra el resultado con texto, métricas y segmentos.
+1. Lectura del audio: WAV y FLAC con `soundfile`; MP3, M4A, AAC, MP4 y MOV con FFmpeg.
+2. Conversión a mono y remuestreo a 16 kHz.
+3. Si dura más de 30 s, fragmentación (ver 5.8).
+4. Cálculo del espectrograma log-Mel de 80 bandas.
 
-Para iniciar la app sin escribir comandos, haz **doble clic en `run.bat`** desde el
-Explorador de Windows. El archivo comprueba que existe `.venv\Scripts\streamlit.exe`,
-cambia al directorio del proyecto y abre Streamlit en el navegador. La ventana de
-consola debe permanecer abierta mientras se usa la app.
+### 5.7 Inferencia
 
-### Atajos con GNU Make
+1. Se construye el prefijo explícito `[50258, 50270, 50359, 50363]` y se pasa como `decoder_input_ids`. Sin él, `transformers ≥ 4.50` omite `<|transcribe|>` y `<|notimestamps|>` y produce texto incorrecto.
+2. Generación autoregresiva con beam search (5 por defecto) o greedy.
+3. Decodificación de los tokens a texto.
+4. La salida es idéntica token a token a la de `transformers 4.30.1`.
 
-En este equipo se comprobó **GNU Make 4.4.1** (`C:\ProgramData\chocolatey\bin\make.exe`).
-Los atajos se pueden ejecutar desde PowerShell, `cmd` o Git Bash; el `Makefile` fija
-`cmd.exe` como shell para que las rutas de `.venv` y las variables de entorno sean
-consistentes en Windows. Todos los comandos usan exclusivamente los ejecutables de
-`.venv`.
+### 5.8 Audio largo (chunking)
 
-| Comando | Acción |
-|---|---|
-| `make help` | Muestra todos los comandos disponibles. Es el objetivo por defecto. |
-| `make run` | Inicia Streamlit con `streamlit_app.py` en `http://localhost:8501`. |
-| `make test` | Ejecuta `unittest discover -s tests -v`. |
-| `make test-real` | Activa `AUDIO2TEXT_RUN_UI_INFERENCE=1` y ejecuta la inferencia real desde Streamlit. |
-| `make check` | Ejecuta `compileall` sobre `streamlit_app.py`, `src`, `scripts` y `tests`. |
-| `make clean` | Elimina solo `__pycache__`, `.pyc`/`.pyo` y cachés de herramientas. |
+1. Se busca la última pausa (RMS bajo durante ≥ 0,4 s) anterior a los 30 s y se corta ahí.
+2. Si no hay pausas, se usan ventanas de 30 s con 2 s de solapamiento y se elimina el texto repetido comparando palabras normalizadas.
+3. Cada fragmento conserva el prefijo y los parámetros de generación.
+4. Los timestamps son estimaciones por segmento.
 
-Notas:
+### 5.9 Interfaz Streamlit
 
-- `make test-real` carga el modelo y tarda aproximadamente 40 s; además reescribe
-  `logs/streamlit_ui_inference.json` y `logs/streamlit_ui_inference_long.json`.
-- `make check` no compila `.venv`, `models`, `vendor`, `logs` ni `data`; solo el código
-  fuente del proyecto.
-- `make clean` **no borra** logs, audios de prueba, pesos del modelo, resultados JSON ni
-  documentación. La lógica segura está en `scripts/clean_caches.py`.
+- **Entrada de audio:** subir archivo (WAV, FLAC, MP3, M4A, AAC, MP4, MOV; hasta 200 MB) o grabar con el micrófono.
+- **Configuración:** modelo, idioma, dispositivo (CUDA/CPU), precisión (FP16/FP32) y beam search.
+- **Resultados:** texto completo, latencia, segmentos con inicio y fin, descargas TXT/JSON.
+- **Historial** de la sesión (máximo 20 resultados) y botón para liberar el modelo de memoria.
 
-### Línea de comandos
+### 5.10 Línea de comandos
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\run_inference.py `
@@ -302,160 +288,147 @@ Notas:
   --json-out logs\inference_long_fp16.json
 ```
 
-Por defecto usa **fp16 + beam 5 en CUDA** y fp32 en CPU. Opciones principales:
-`--device {cuda,cpu}`, `--dtype {float32,float16,bfloat16}`, `--num-beams`,
-`--max-new-tokens`, `--language {catalan,tamil,thai}`, `--max-chunk-seconds`,
-`--chunk-overlap`, `--silence-rms`, `--min-silence-seconds` y `--no-chunk`.
-
-El JSON incluye `text`, `segments[]` (inicio/fin, texto, tokens, latencia, silencio),
-`chunking`, métricas y `token_ids` en la ruta corta.
-
-## Estructura
+### 5.11 Estructura del repositorio
 
 ```
-Makefile                 # atajos Windows: run, test, test-real, check y clean
-run.bat                  # inicio de Streamlit con doble clic, sin GNU Make
-streamlit_app.py         # interfaz: subida/grabación de audio, configuración, progreso, resultados
-.streamlit/config.toml   # tema nativo y límite de subida
+streamlit_app.py            # interfaz: subida/grabación, configuración, resultados
+run.bat                     # inicio con doble clic en Windows
+Makefile                    # atajos: run, test, test-real, check, clean
+requirements.txt
+.streamlit/config.toml      # tema y límite de subida
 src/audio2text/
-├── chunking.py          # ventanas, cortes por silencio, unión sin duplicados
-├── compat.py            # shims: stub de datasets, cached_file, atención 4.30
-├── legacy_attention.py  # WhisperAttention con el contrato de transformers 4.30
-├── engine.py            # carga, audio, transcribe / transcribe_long / transcribe_auto
-├── metrics.py           # CER/WER sin dependencias externas
-└── ui_service.py        # validación de subidas, serialización TXT/JSON, historial
-scripts/
-├── clean_caches.py      # limpieza segura usada por make clean
-├── prepare_sample.py    # descarga reproducible del audio FLEURS corto
-├── make_long_sample.py  # audio sintético de 42.4 s para probar chunking
-└── run_inference.py     # CLI de inferencia + evaluación
-tests/
-├── test_chunking.py     # ventanas, límites, solape, silencio
-├── test_engine.py       # audio vacío/silencioso, errores, dispatch, segmentos
-├── test_ui_service.py   # validación, formatos, payload, historial
-├── test_whisper_small.py # routing de Whisper Small (español), carga real
-├── test_streamlit_app.py       # AppTest: subida, grabación, errores, historial
-└── test_streamlit_inference.py # inferencia real opcional con AppTest
-vendor/multilingual-distilwhisper/   # repo oficial sin modificar
-logs/                    # resultados JSON y logs de las ejecuciones
-docs/INFORME.md          # informe técnico
+├── engine.py               # carga del modelo, audio, transcribe / transcribe_auto
+├── chunking.py             # ventanas, cortes por silencio, unión sin duplicados
+├── compat.py               # parches de compatibilidad con transformers 4.57
+├── legacy_attention.py     # WhisperAttention con el contrato de transformers 4.30
+├── metrics.py              # CER y WER
+└── ui_service.py           # validación de subidas, TXT/JSON, historial
+scripts/                    # prepare_sample, make_long_sample, run_inference, clean_caches
+tests/                      # 90 pruebas (86 rápidas y 4 de inferencia real)
+vendor/multilingual-distilwhisper/   # repositorio oficial de NAVER, sin modificar
+data/samples/               # audios de prueba (catalán y español)
+docs/INFORME.md             # informe técnico detallado
 ```
 
-## Pruebas
+### 5.12 Pruebas
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-90 pruebas: 86 rápidas y 4 de inferencia real omitidas por defecto (`Ran 90 tests
-... OK (skipped=4)`). Las rápidas no cargan el modelo ni usan GPU y cubren audios
-cortos, largos, límites de 30 s, cobertura de ventanas, solapamiento, deduplicación,
-fragmentos silenciosos, audio vacío, errores de lectura, validación de subidas,
-serialización TXT/JSON, historial, renderizado de la interfaz y grabación desde el
-micrófono (conversión de la grabación a WAV, envío al motor y manejo de grabaciones
-inválidas o vacías). Las pruebas de `test_whisper_small.py` añaden routing del modelo
-Whisper Small, validación de idioma (español vs. expertos NAVER), carga real de ambos
-modelos (saltan si Whisper Small no está en caché local) e inferencia real en español.
+Resultado esperado: `Ran 90 tests ... OK (skipped=4)`. Las 4 pruebas omitidas son de inferencia real y se activan con `AUDIO2TEXT_RUN_UI_INFERENCE=1` o `AUDIO2TEXT_RUN_WHISPER_INFERENCE=1`.
 
-Prueba de inferencia real a través de la UI (requiere pesos y GPU/CPU disponible):
+---
 
-```powershell
-$env:AUDIO2TEXT_RUN_UI_INFERENCE = "1"
-.\.venv\Scripts\python.exe -m unittest tests.test_streamlit_inference -v
-```
+## 6. Resultados y análisis
 
-La prueba sube `ca_es_sample.wav` y `ca_es_long.wav` mediante el `file_uploader` de
-Streamlit, pulsa el botón real y comprueba texto, segmentos, descargas e historial.
-Escribe la evidencia en `logs/streamlit_ui_inference*.json`.
+### 6.1 Capturas de las pruebas realizadas
 
-Pruebas reales de inferencia en español con Whisper Small (opcional, salte si faltan
-los audios):
+> **Reemplazar estas imágenes por capturas propias** tomadas desde la aplicación real y guardarlas en `docs/img/`.
 
-```powershell
-$env:AUDIO2TEXT_RUN_WHISPER_INFERENCE = "1"
-.\.venv\Scripts\python.exe -m unittest tests.test_whisper_small.WhisperSmallRealInferenceTest -v
-```
+| Pantalla inicial y configuración | Resultado con texto y segmentos |
+|---|---|
+| ![Pantalla inicial](docs/img/01_pantalla_inicial.png) | ![Resultado](docs/img/02_resultado.png) |
 
-Transcribe `es_es_sample.wav` (8.40 s) y `es_es_long.wav` (36.60 s, 2 segmentos) con
-`language="es"` y comprueba que la salida es texto en español.
+| Audio largo con segmentos | Entrada por micrófono |
+|---|---|
+| ![Audio largo](docs/img/03_audio_largo.png) | ![Micrófono](docs/img/04_microfono.png) |
 
-Equivalentes con GNU Make: `make test` y `make test-real`.
+| Whisper Small en español | Historial de la sesión |
+|---|---|
+| ![Español](docs/img/05_espanol.png) | ![Historial](docs/img/06_historial.png) |
 
-## Compatibilidad con `transformers 4.57.3`
+### 6.2 Métricas: audio corto en catalán
 
-El repo oficial fue escrito para `transformers 4.30.1`, que no tiene wheels para
-Python 3.13. `src/audio2text/compat.py` aplica tres correcciones en tiempo de
-ejecución, sin tocar `vendor/`:
+Audio `data/samples/ca_es_sample.wav` (FLEURS `ca_es`, 20,70 s, 16 kHz mono), GPU RTX 2050.
 
-1. **`datasets`**: el módulo se importa pero no se usa en inferencia; se instala un
-   stub si no está disponible.
-2. **`cached_file`**: se filtran `resume_download`/`proxies`, eliminados de
-   `huggingface_hub`.
-3. **`WhisperAttention`**: se restaura la implementación 4.30 (retorno de 3 tuplas y
-   caché KV legacy) porque las versiones modernas devuelven 2 tuplas.
+| Dispositivo | Precisión | Búsqueda | Latencia | VRAM pico | CER | WER |
+|---|---|---|---|---|---|---|
+| CUDA | FP32 | beam 5 | 9,66 s | 2592 MiB | 2,86 % | 9,80 % |
+| CUDA | FP16 | beam 5 | 7,72 s | 1315 MiB | 2,86 % | 9,80 % |
+| CPU | FP32 | beam 5 | 28,78 s | no aplica | 2,86 % | 9,80 % |
+| CUDA | FP32 | greedy | 6,92 s | 1603 MiB | 2,86 % | 9,80 % |
 
-Además, `engine.py`:
+Transcripción obtenida:
 
-- mezcla `GenerationMixin` en la clase upstream (transformers ≥ 4.50 lo quitó de
-  `PreTrainedModel`) y desactiva el KV cache dinámico;
-- carga `generation_config.json` explícitamente;
-- construye el prefijo forzado
-  `<|startoftranscript|><|ca|><|transcribe|><|notimestamps|>`
-  (ids `[50258, 50270, 50359, 50363]`) y lo pasa como `decoder_input_ids`, porque
-  `transformers` ≥ 4.50 ya no lee `generation_config.forced_decoder_ids`;
-- en `_generate()`, el path de `openai/whisper-small` usa `generate(language="es",
-  task="transcribe")`; transformers ≥ 4.57 rechaza prefijo + `max_new_tokens` >
-  `max_target_positions` (448), por lo que el presupuesto se reduce por la longitud
-  del prefijo (448 → 444) sin cambiar la longitud total.
+> Avui en dia, la cuina japanesa és fàcil de trobar per tot arreu de l'arxipèleg i ofereix una gran varietat de plats condimentats de forma senzilla. Els sabors preferits als japanesos solen ser els dels cacauets, els bitxos, el sucre, sobretot el sucre, coco javanès i diverses espècies aromàtiques.
 
-Sin ese prefijo explícito, la generación moderna omite `<|transcribe|>` y
-`<|notimestamps|>` y produce texto incorrecto. Con él, la salida es idéntica token a
-token a la de `transformers 4.30.1`.
+### 6.3 Audio largo (chunking)
 
-## Limitaciones conocidas
+Audio sintético de 42,40 s (el clip FLEURS repetido dos veces con 1 s de silencio): CUDA, FP16, beam 5.
 
-- **Cortes sin pausa**: si el audio es continuo y no hay silencios, se usan ventanas
-  solapadas y la deduplicación es heurística (comparación de palabras). Si el modelo
-  termina antes de lo esperado dentro de una ventana (p. ej. por una pausa larga
-  interna), la región posterior puede perderse; en ese caso conviene reducir
-  `--max-chunk-seconds` o ajustar `--min-silence-seconds`.
-- **Silencio**: la detección por RMS es absoluta. Audio muy bajo o con ruido de fondo
-  por encima de `--silence-rms` puede no detectarse como silencio.
-- **Idiomas**: el checkpoint 28k solo incluye expertos para catalán, tamil y
-  tailandés; no soporta español. Español está disponible con Whisper Small
-  (`language="es"`); el idioma del modelo NAVER no se modifica.
-- **Aviso benigno**: `The attention mask is not set ... pad token is same as eos token`.
-  El modelo no usa máscara en evaluación y los resultados coinciden con la referencia;
-  se deja visible por transparencia.
-- **Whisper Small**: disponible en caché de Hugging Face o descargado bajo demanda;
-  sin ejecución de inferencia real se ejecuta en la suite rápida (salta si no está
-  en caché).
-- **Formato de audio**: WAV/FLAC vía `soundfile`; MP3, M4A, AAC, MP4 y MOV vía `FFmpeg` (se busca `ffmpeg` en el PATH, `C:\ffmpeg\bin\ffmpeg.exe` y `%ProgramFiles%\ffmpeg\bin\ffmpeg.exe`). No se requiere FFmpeg para WAV/FLAC.
-- **Historial de la interfaz**: vive solo en la sesión de Streamlit (máximo 20
-  resultados). No se guarda el audio en el historial y se pierde al cerrar o recargar
-  la sesión.
-- **Caché del modelo**: se mantiene una sola configuración cargada por modelo para no
-  agotar los 4 GB de VRAM. Cambiar de modelo, idioma, dispositivo o precisión provoca
-  una recarga; el botón «Liberar modelo de memoria» permite vaciarla manualmente.
-- **Progreso**: es por fases (carga e inferencia), no un porcentaje real por fragmento.
-  El motor no expone callbacks de progreso por chunk.
-- **CPU**: FP16 no se ofrece en CPU; se usa FP32. La inferencia en CPU es
-  considerablemente más lenta (28.78 s para el clip de 20.70 s).
-- **Uso local**: la interfaz no tiene autenticación ni multiusuario; está pensada para
-  ejecutarse en `localhost`.
+| Segmentos | Latencia | VRAM pico | CER | WER |
+|---|---|---|---|---|
+| 2 (0,00–21,01 s y 21,01–42,40 s) | 16,26 s | 1315 MiB | 4,49 % | 12,75 % |
 
-## Capturas pendientes
+### 6.4 Whisper Small en español
 
-Aún no se han añadido capturas al repositorio. Pendiente de incluir:
+| Audio | Latencia | VRAM pico |
+|---|---|---|
+| `es_es_sample.wav` (8,40 s) | 2,54 s | 786 MiB |
+| `es_es_long.wav` (36,60 s, 2 segmentos) | 15,84 s | no medido |
 
-- Pantalla inicial con carga de audio y configuración.
-- Resultado con texto, métricas, segmentos y descargas.
-- Historial de la sesión y selector de resultados.
-- Indicadores de CUDA/CPU, FP16/FP32 y VRAM.
+### 6.5 Inferencia a través de la interfaz
 
-Las capturas deben generarse desde la app real, no con datos simulados.
+| Flujo | Audio | Latencia (modelo en caché) | Segmentos |
+|---|---|---|---|
+| Corto | `ca_es_sample.wav` (20,70 s) | 6,35 – 8,18 s | 1 |
+| Largo | `ca_es_long.wav` (42,40 s) | 15,33 – 18,57 s | 2 |
 
-## Documentación
+### 6.6 Análisis
 
-El informe técnico completo (entorno, metodología, errores encontrados, resultados y
-trabajo pendiente) está en [`docs/INFORME.md`](docs/INFORME.md).
+- **Validez de la implementación:** las cuatro configuraciones producen los mismos 109 tokens que la referencia con `transformers 4.30.1`. El uso de FP16 o CPU no altera el resultado.
+- **Rendimiento:** FP16 reduce la VRAM de 2592 a 1315 MiB (≈ 49 %) y la latencia de 9,66 a 7,72 s, sin pérdida de precisión. La CPU es unas 3,7 veces más lenta que CUDA con FP16.
+- **Errores:** las diferencias con la referencia de FLEURS son principalmente ortográficas (`japanesa`/`javanesa`, `arxipèleg`/`arxipèlag`) y de puntuación, no de contenido.
+- **Audio largo:** el corte en la pausa evita texto perdido o duplicado en la unión. La segunda repetición omite `arreu de l'` por variación del modelo, no por el chunking. El CER y el WER suben respecto al clip corto (4,49 % y 12,75 %), porque cualquier omisión pesa más en un texto más largo.
+- **Latencia:** crece de forma aproximadamente lineal con el número de ventanas de 30 s.
+- **Memoria:** con 4 GB de VRAM, FP16 permite ejecutar cómodamente ambos modelos (se mantiene uno en caché a la vez).
+
+---
+
+## 7. Conclusiones
+
+### Aprendizajes
+
+- En un Transformer encoder-decoder, el encoder entiende el audio y el decoder genera el texto; la **atención cruzada** conecta ambos.
+- Q, K y V son proyecciones lineales de la entrada; la atención es un promedio ponderado de los valores según la similitud entre consultas y claves.
+- La innovación de DistilWhisper está en combinar **destilación** con **expertos modulares por idioma**, lo que acerca un modelo pequeño al rendimiento de uno grande en idiomas de pocos recursos.
+- Un detalle aparentemente menor, el **prefijo de tokens de control**, cambia por completo la calidad de la salida.
+- Reutilizar código de investigación exige adaptarlo: las versiones de las librerías cambian y pueden romper la compatibilidad.
+
+### Limitaciones
+
+- El modelo NAVER solo cubre catalán, tamil y tailandés; el español se resuelve con Whisper Small.
+- Ventana de 30 s: el audio largo depende de una heurística de fragmentación y deduplicación.
+- Los timestamps son por segmento, no por palabra.
+- La interfaz no tiene autenticación ni multiusuario (uso local).
+- La decodificación autoregresiva no permite transcripción en tiempo real.
+- El progreso mostrado es por fases, no por fragmento.
+
+### Posibles mejoras
+
+- Añadir los expertos de tamil y tailandés a los ejemplos y más muestras de prueba.
+- Timestamps por palabra (alineamiento).
+- Transcripción en streaming.
+- Detección de silencio adaptativa al ruido de fondo.
+- Evaluación con más audios y más idiomas para obtener métricas más robustas.
+
+---
+
+## 8. Referencias
+
+[1] T. Palmeira Ferraz, M. Zanon Boito, C. Brun y V. Nikoulina, "DistilWhisper: Efficient distillation of multi-task speech models via language-specific experts," en *Proc. IEEE Int. Conf. Acoustics, Speech and Signal Processing (ICASSP)*, 2024. arXiv:2311.01070.
+
+[2] A. Radford, J. W. Kim, T. Xu, G. Brockman, C. McLeavey e I. Sutskever, "Robust speech recognition via large-scale weak supervision," en *Proc. Int. Conf. Machine Learning (ICML)*, 2023. arXiv:2212.04356.
+
+[3] A. Vaswani et al., "Attention is all you need," en *Advances in Neural Information Processing Systems (NeurIPS)*, 2017.
+
+[4] B. Zhang, A. Bapna, R. Sennrich y O. Firat, "Share or not? Learning to schedule language-specific capacity for multilingual translation," en *Proc. Int. Conf. Learning Representations (ICLR)*, 2021.
+
+[5] A. Conneau et al., "FLEURS: Few-shot learning evaluation of universal representations of speech," en *Proc. IEEE Spoken Language Technology Workshop (SLT)*, 2022.
+
+[6] NAVER Labs Europe, "naver/multilingual-distilwhisper-28k," Hugging Face. [En línea]. Disponible: https://huggingface.co/naver/multilingual-distilwhisper-28k
+
+[7] NAVER Labs Europe, "multilingual-distilwhisper," GitHub. [En línea]. Disponible: https://github.com/naver/multilingual-distilwhisper
+
+[8] OpenAI, "openai/whisper-small," Hugging Face. [En línea]. Disponible: https://huggingface.co/openai/whisper-small
