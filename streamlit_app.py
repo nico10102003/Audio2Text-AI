@@ -1,9 +1,15 @@
-"""Local Streamlit interface for the validated Audio2Text AI engine."""
+"""Local Streamlit interface for the validated Audio2Text AI engine.
+
+Modern, professional layout: cards, clear visual hierarchy and spacing.
+All behavior (transcription engine flow, model cache, upload/record,
+history) is unchanged; the redesigned visuals are pure presentation.
+"""
 
 from __future__ import annotations
 
 import gc
 import logging
+import math
 import sys
 import time
 from pathlib import Path
@@ -14,12 +20,16 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from audio2text.educational_section import (  # noqa: E402
+    render_educational_section,
+)
 from audio2text.engine import (  # noqa: E402
     MODEL_NAVER_ID,
     MODEL_WHISPER_SMALL_ID,
     load_model,
     transcribe_auto,
 )
+from audio2text.ui_styles import inject_styles  # noqa: E402
 from audio2text.ui_service import (  # noqa: E402
     MODEL_OPTIONS,
     AudioValidationError,
@@ -58,6 +68,68 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+inject_styles()
+
+
+# ---------------------------------------------------------------------------
+# Illustrations: sound-wave icon + app icons (consistent, subtle SVGs)
+# ---------------------------------------------------------------------------
+
+
+def _icon(path: str, size: int = 20) -> str:
+    """Inline SVG icon (lucide style) consistent with the app palette."""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        f'stroke-linecap="round" stroke-linejoin="round">{path}</svg>'
+    )
+
+
+_ICON_FILE = _icon(
+    '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>'
+    '<path d="M13 2v7h7"/>'
+)
+_ICON_MIC = _icon(
+    '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>'
+    '<path d="M19 12v2a7 7 0 0 1-14 0"/>'
+    '<path d="M8 15H7a4 4 0 0 1-4-4v0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4H8Z"/>'
+)
+_ICON_PLAY = _icon('<path d="m6 4 12 8-12 8V4z"/>')
+_ICON_DOWNLOAD = _icon(
+    '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>'
+    '<path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'
+)
+_ICON_HISTORY = _icon(
+    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+)
+
+
+def _wave_svg(
+    width: int = 160, height: int = 42, color: str = "#4F46E5", cls: str = "a2t-wave"
+) -> str:
+    """Sinusoidal sound-wave SVG used as the header illustration."""
+    cy = height / 2
+    amp = height * 0.42
+    n = 12
+    path = "M0 {}".format(int(cy)) + "".join(
+        "L{:.0f} {:.0f}".format(
+            i * width / n, cy - amp * math.sin(2 * math.pi * i / n)
+        )
+        for i in range(1, n + 1)
+    )
+    return (
+        f'<svg class="{cls}" viewBox="0 0 {width} {height}" '
+        f'width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="{path}" fill="none" stroke="{color}" stroke-width="2.5" '
+        f'stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+    )
+
+
+# ---------------------------------------------------------------------------
+# Model cache / state
+# ---------------------------------------------------------------------------
 
 
 def _release_cached_model(loaded) -> None:
@@ -113,6 +185,11 @@ def _sync_active_record() -> None:
         st.session_state.active_record_id = record.record_id
 
 
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
+
 def _render_sidebar() -> tuple[str, str, str, int, str]:
     cuda_available = torch.cuda.is_available()
 
@@ -123,7 +200,7 @@ def _render_sidebar() -> tuple[str, str, str, int, str]:
 
     with st.sidebar:
         st.markdown("## Configuración")
-        st.caption("El modelo se mantiene en caché entre interacciones.")
+        st.caption("Ajusta el motor antes de transcribir.")
 
         model_id = st.selectbox(
             "Modelo",
@@ -226,6 +303,11 @@ def _render_sidebar() -> tuple[str, str, str, int, str]:
     return language, device, dtype, num_beams, model_id
 
 
+# ---------------------------------------------------------------------------
+# Audio handling
+# ---------------------------------------------------------------------------
+
+
 def _get_uploaded_audio(uploaded):
     """Reuse the decoded upload across reruns and invalidate it on change."""
     file_id = getattr(uploaded, "file_id", "") or ""
@@ -241,12 +323,7 @@ def _get_uploaded_audio(uploaded):
 
 
 def _load_tab_audio(recording):
-    """Validate a file upload or a microphone recording and decode it in memory.
-
-    Returns the ``UploadedAudio`` for transcription, or ``None`` when the
-    payload is invalid (an error is shown); the temporary decode file of
-    ``load_uploaded_audio`` is deleted right after decoding.
-    """
+    """Validate a file upload or a microphone recording and decode it in memory."""
     try:
         return _get_uploaded_audio(recording)
     except Exception as exc:
@@ -255,26 +332,39 @@ def _load_tab_audio(recording):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Header
+# ---------------------------------------------------------------------------
+
+
 def _render_header() -> None:
-    st.title("Audio2Text AI")
+    st.html(_wave_svg())
+    st.title("Audio2Text AI", anchor=False)
+    st.markdown("<h2 class='a2t-subtitle'>La voz se convierte en texto</h2>", unsafe_allow_html=True)
     st.caption(
-        "Transcripción local: NAVER Multilingual DistilWhisper 28k (catalán, tamil, "
-        "tailandés) y OpenAI Whisper Small (español) · audio corto y largo"
+        "Reconocimiento de voz en audio local — transcribe con IA y accesibilidad "
+        "auditiva. Catalán, tamil, tailandés y español."
     )
 
 
-def _render_upload() -> object | None:
-    """Two entry points for audio: upload a file or record with the microphone.
+# ---------------------------------------------------------------------------
+# Audio: upload + record
+# ---------------------------------------------------------------------------
 
-    Both produce the same ``UploadedAudio`` and feed the same transcription
-    flow.
-    """
+
+def _render_upload() -> object | None:
+    """Two entry points for audio: upload a file or record with the microphone."""
     audio = None
     with st.container(border=True):
-        st.subheader("1. Audio")
+        st.subheader("1. Audio", divider=False)
+        st.caption("Sube el audio o grábalo; ambos flujos usan el mismo motor de transcripción.")
         tab_upload, tab_record = st.tabs(["Subir archivo", "Grabar audio"])
 
         with tab_upload:
+            st.markdown(
+                f'<span class="a2t-icon">{_ICON_FILE}</span>Subir archivo',
+                unsafe_allow_html=True,
+            )
             uploaded = st.file_uploader(
                 "Sube un archivo WAV, FLAC, MP3, M4A, AAC, MP4 o MOV",
                 type=["wav", "flac", "mp3", "m4a", "aac", "mp4", "mov"],
@@ -309,6 +399,10 @@ def _render_upload() -> object | None:
                     )
 
         with tab_record:
+            st.markdown(
+                f'<span class="a2t-icon">{_ICON_MIC}</span>Grabar audio',
+                unsafe_allow_html=True,
+            )
             recorded = st.audio_input(
                 "Grabar audio",
                 sample_rate=16000,
@@ -338,10 +432,23 @@ def _render_upload() -> object | None:
     return audio
 
 
-def _render_result(record) -> None:
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
+
+
+def _render_result(record, audio=None) -> None:
     with st.container(border=True):
-        st.subheader("Resultados")
+        st.subheader("Resultados", divider=False)
         st.caption(config_label(record))
+
+        if audio is not None:
+            st.audio(
+                audio.data,
+                format=audio.mime_type,
+                alt=f"Audio: {audio.filename}",
+            )
+            st.caption(f"{audio.filename} · {format_duration(audio.duration_s)}")
 
         metric_columns = st.columns(4)
         metric_columns[0].metric(
@@ -370,7 +477,7 @@ def _render_result(record) -> None:
         download_columns = st.columns(2)
         with download_columns[0]:
             st.download_button(
-                "Descargar TXT",
+                f'{_ICON_DOWNLOAD}Descargar TXT',
                 data=record_to_txt(record),
                 file_name=download_filename(record, "txt"),
                 mime="text/plain; charset=utf-8",
@@ -380,7 +487,7 @@ def _render_result(record) -> None:
             )
         with download_columns[1]:
             st.download_button(
-                "Descargar JSON",
+                f'{_ICON_DOWNLOAD}Descargar JSON',
                 data=record_to_json(record),
                 file_name=download_filename(record, "json"),
                 mime="application/json",
@@ -439,9 +546,14 @@ def _render_result(record) -> None:
                 st.json(record.chunking)
 
 
+# ---------------------------------------------------------------------------
+# History
+# ---------------------------------------------------------------------------
+
+
 def _render_history() -> None:
     with st.container(border=True):
-        st.subheader("Historial de la sesión")
+        st.subheader("Historial de la sesión", divider=False)
         history = st.session_state.history
         if not history:
             st.caption(
@@ -460,6 +572,10 @@ def _render_history() -> None:
                 history_label(active) if active is not None else valid_labels[0]
             )
 
+        st.markdown(
+            f'<span class="a2t-icon">{_ICON_HISTORY}</span>Historial de la sesión',
+            unsafe_allow_html=True,
+        )
         st.selectbox(
             "Selecciona una transcripción",
             options=valid_labels,
@@ -475,6 +591,11 @@ def _render_history() -> None:
             st.session_state.history = []
             st.session_state.active_record_id = None
             st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# State sync
+# ---------------------------------------------------------------------------
 
 
 def _sync_history_from_state() -> None:
@@ -494,6 +615,10 @@ def _sync_history_from_state() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Main flow
+# ---------------------------------------------------------------------------
+
 _init_state()
 language, device, dtype, num_beams, model_id = _render_sidebar()
 
@@ -505,7 +630,7 @@ active_record = find_record(
 )
 audio = _render_upload()
 
-st.subheader("2. Transcripción")
+st.subheader("2. Transcripción", divider=False)
 st.caption(
     f"Configuración activa: **{language_label(language)}** · "
     f"**{device_label(device)}** · **{dtype_label(dtype)}** · "
@@ -586,13 +711,15 @@ if transcribe_clicked and audio is not None:
         progress.empty()
 
 if active_record is not None:
-    _render_result(active_record)
+    _render_result(active_record, audio)
 else:
     with st.container(border=True):
-        st.subheader("Resultados")
+        st.subheader("Resultados", divider=False)
         st.info(
             "Sube un audio, revisa la configuración y pulsa «Transcribir audio». "
             "Los resultados aparecerán aquí."
         )
 
 _render_history()
+
+render_educational_section()
