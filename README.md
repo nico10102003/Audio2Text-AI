@@ -4,7 +4,7 @@
 
 Proyecto final · Procesamiento de Datos Secuenciales
 
-**Integrantes:** `[Nombre 1]`, `[Nombre 2]`, `[Nombre 3]`, `[Nombre 4]`
+**Integrantes:** `[Nombre 1]`, `[Nombre 2]`, `[Davinson Tulande]`, `[Nombre 4]`
 
 ---
 
