@@ -11,15 +11,16 @@ linkColor = "#4F46E5"
 borderColor = "#E2E8F0"
 showWidgetBorder = true
 showSidebarBorder = true
-baseRadius = "8px"
-buttonRadius = "8px"
+baseRadius = "12px"
+buttonRadius = "10px"
 baseFontSize = 15
-font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
 codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
 codeBackgroundColor = "#F1F5F9"
 codeTextColor = "#0F172A"
-headingFontSizes = ["34px", "28px", "22px", "18px", "16px", "14px"]
-headingFontWeights = [600, 600, 600, 600, 600, 600]
+headingFontSizes = ["36px", "30px", "24px", "20px", "16px", "14px"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+paddingTop = "1rem"
 
 [theme.sidebar]
 backgroundColor = "#F8FAFC"
