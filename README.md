@@ -336,15 +336,20 @@ A continuación, se presentan evidencias visuales de la interfaz de Audio2Text A
 
 La aplicación cuenta con una interfaz desarrollada en Streamlit que permite seleccionar el modelo de inteligencia artificial, el idioma, el dispositivo de ejecución y la precisión numérica. También permite cargar archivos de audio o realizar grabaciones directamente desde el micrófono.
 
-![Interfaz principal de Audio2Text AI](docs/img/audio2text-interfaz.png)
+![Interfaz principal de Audio2Text AI](docs/img/evidencia-02.png)
 
 ### 2. Resultado de la transcripción
 
 La aplicación presenta el texto generado por el modelo, junto con información sobre la duración del audio, la latencia de inferencia y los segmentos procesados. También permite copiar y descargar los resultados en formatos TXT y JSON.
 
+![Resultado de la transcripción](docs/img/evidencia-03.png)
+
+
 ### 3. Información del entorno de ejecución
 
 La interfaz muestra información sobre el dispositivo utilizado (CPU o CUDA), la GPU detectada, la precisión numérica seleccionada y el consumo de memoria de la tarjeta gráfica.
+
+![Entorno de ejecución](docs/img/audio2text-interfaz.png)
 
 ### 4. Historial de transcripciones
 
