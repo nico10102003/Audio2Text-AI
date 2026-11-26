@@ -355,7 +355,7 @@ La interfaz muestra información sobre el dispositivo utilizado (CPU o CUDA), la
 
 La aplicación permite consultar las transcripciones realizadas durante la sesión, seleccionar resultados anteriores y acceder nuevamente a su contenido.
 
-Las capturas adicionales de estas funcionalidades se incorporarán conforme se realicen las pruebas correspondientes desde la aplicación.
+![historial](docs/img/historial.png)
 
 ### 6.2 Métricas: audio corto en catalán
 
