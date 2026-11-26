@@ -324,19 +324,29 @@ Resultado esperado: `Ran 90 tests ... OK (skipped=4)`. Las 4 pruebas omitidas so
 
 ### 6.1 Capturas de las pruebas realizadas
 
-> **Reemplazar estas imágenes por capturas propias** tomadas desde la aplicación real y guardarlas en `docs/img/`.
+## Capturas de la aplicación
 
-| Pantalla inicial y configuración | Resultado con texto y segmentos |
-|---|---|
-| ![Pantalla inicial](docs/img/01_pantalla_inicial.png) | ![Resultado](docs/img/02_resultado.png) |
+A continuación, se presentan evidencias visuales de la interfaz de Audio2Text AI y de sus funcionalidades principales.
 
-| Audio largo con segmentos | Entrada por micrófono |
-|---|---|
-| ![Audio largo](docs/img/03_audio_largo.png) | ![Micrófono](docs/img/04_microfono.png) |
+### 1. Pantalla inicial y configuración
 
-| Whisper Small en español | Historial de la sesión |
-|---|---|
-| ![Español](docs/img/05_espanol.png) | ![Historial](docs/img/06_historial.png) |
+La aplicación cuenta con una interfaz desarrollada en Streamlit que permite seleccionar el modelo de inteligencia artificial, el idioma, el dispositivo de ejecución y la precisión numérica. También permite cargar archivos de audio o realizar grabaciones directamente desde el micrófono.
+
+![Interfaz principal de Audio2Text AI](docs/img/audio2text-interfaz.png)
+
+### 2. Resultado de la transcripción
+
+La aplicación presenta el texto generado por el modelo, junto con información sobre la duración del audio, la latencia de inferencia y los segmentos procesados. También permite copiar y descargar los resultados en formatos TXT y JSON.
+
+### 3. Información del entorno de ejecución
+
+La interfaz muestra información sobre el dispositivo utilizado (CPU o CUDA), la GPU detectada, la precisión numérica seleccionada y el consumo de memoria de la tarjeta gráfica.
+
+### 4. Historial de transcripciones
+
+La aplicación permite consultar las transcripciones realizadas durante la sesión, seleccionar resultados anteriores y acceder nuevamente a su contenido.
+
+Las capturas adicionales de estas funcionalidades se incorporarán conforme se realicen las pruebas correspondientes desde la aplicación.
 
 ### 6.2 Métricas: audio corto en catalán
 
