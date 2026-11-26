@@ -4,7 +4,7 @@
 
 Proyecto final · Procesamiento de Datos Secuenciales
 
-**Integrantes:** `[Nicolas Esteban Pulido Poveda]`, `[Brandon Steven Ramos Enriquez]`, `[Davinson Tulande]`, `[Nombre 4]`
+**Integrantes:** `[Nicolas Esteban Pulido Poveda]`, `[Brandon Steven Ramos Enriquez]`, `[Davinson Tulande]`, `[Nicolas Bolaños Esterling]`
 
 ---
 
